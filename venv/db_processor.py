@@ -1,7 +1,13 @@
-import sqlite3
 import csv
+import http.client
 import socket
+import sqlite3
 import struct
+import sys
+
+from PyQt5.QtGui import QPixmap, QFont
+from PyQt5.QtWidgets import QApplication, QLabel, QWidget, QPushButton, QMainWindow, QVBoxLayout, QLineEdit, \
+    QPlainTextEdit
 
 # путь к БД
 db_path = r'ip.db'
@@ -64,6 +70,28 @@ def get_country_id_by_code(country_code):
         raise Exception(f"Ошибка поиска идентификатора страны по коду {country_code}: " + str(e))
 
 
+def get_country(ip):
+    try:
+        cur = connection.cursor()
+        cur.execute(f"""SELECT c.code, c.name 
+        FROM country c, ip i 
+        WHERE {ip} BETWEEN i.beg_ip AND i.end_ip 
+            AND c.id = i.country_id
+        LIMIT 1""")
+        result = cur.fetchall()
+        for row in result:
+            return row
+        return None
+    except Exception as e:
+        raise Exception(f"Ошибка поиска идентификатора IP по {beg_ip}, {end_ip}: " + str(e))
+
+
+# получает путь к файлу с изображение флага
+def get_flag(country_code):
+    return fr'flags/flags-medium/{country_code.lower()}.png'
+
+
+
 # получение страны по IP int
 def get_country_by_ip(ip):
     try:
@@ -79,6 +107,7 @@ def get_country_by_ip(ip):
         return None
     except Exception as e:
         raise Exception(f"Ошибка поиска идентификатора IP по {beg_ip}, {end_ip}: " + str(e))
+
 
 # возвращает id страны по коду
 def get_ip_id_by_beg_and_end(beg_ip, end_ip):
@@ -101,6 +130,9 @@ def ip2int(addr):
 # ковертирует int в ip
 def int2ip(addr):
     return socket.inet_ntoa(struct.pack("!I", addr))
+
+
+
 
 # загрузка данных
 def data_load():
@@ -140,10 +172,117 @@ def data_load():
 # основной блок
 try:
     __init__()
-    db_init()
-    data_load()
-    print(get_country_by_ip(ip2int("87.250.250.242")))
-    print("ПРОГРАММА ЗАВЕРШЕНА")
+
+
+    # db_init()
+    # data_load()
+    # print(get_country_by_ip(ip2int("46.72.11.190")))
+    # print("ПРОГРАММА ЗАВЕРШЕНА")
+
+    class IP(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.initUI()
+
+        def set_flag(self, path):
+            flag = QPixmap(path)
+            flag = flag.scaledToWidth(100)
+            self.image.setPixmap(flag)
+
+        def initUI(self):
+            self.setGeometry(0, 0, 500, 350)
+            self.setMinimumSize(250, 270)
+            self.setWindowTitle('Вычисление по IP')
+
+            self.main_layout = QVBoxLayout(self)
+            self.label_layout = QVBoxLayout(self)
+            self.name_input_layout = QVBoxLayout(self)
+            self.btn_my_ip_layout = QVBoxLayout(self)
+            self.btn_look_inform_layout = QVBoxLayout(self)
+            self.output_layout = QVBoxLayout(self)
+
+            self.label = QLabel(self)
+            self.label.setText("IP:")
+            self.label.move(90, 50)
+            self.label.resize(20, 10)
+
+            self.name_input = QLineEdit(self)
+            self.name_input.resize(250, 50)
+            self.name_input.move(125, 30)
+
+            self.btn_my_ip = QPushButton('Узнать свой IP', self)
+            self.btn_my_ip.resize(150, 30)
+            self.btn_my_ip.move(100, 90)
+            self.btn_my_ip.clicked.connect(self.my_ip)
+
+            self.btn_look_inform = QPushButton('Расчитать страну', self)
+            self.btn_look_inform.resize(150, 30)
+            self.btn_look_inform.move(250, 90)
+            self.btn_look_inform.clicked.connect(self.country)
+
+            self.output = QPlainTextEdit(self)
+            self.output.resize(150, 30)
+            self.output.move(200, 140)
+            self.output.setEnabled(False)
+            self.output.setStyleSheet("""
+                font: bold 25px;
+                color: black;
+            """)
+
+            self.label_layout.addWidget(self.label)
+            self.name_input_layout.addWidget(self.name_input)
+            self.btn_my_ip_layout.addWidget(self.btn_my_ip)
+            self.btn_look_inform_layout.addWidget(self.btn_look_inform)
+            self.output_layout.addWidget(self.output)
+
+            self.main_layout.addLayout(self.label_layout)
+            self.main_layout.addLayout(self.name_input_layout)
+            self.main_layout.addLayout(self.btn_my_ip_layout)
+            self.main_layout.addLayout(self.btn_look_inform_layout)
+            self.main_layout.addLayout(self.output_layout)
+
+            self.pixmap = QPixmap(r"D:\dev\ip_project\venv\flags\flags-medium\ip_start.png")
+            self.pixmap = self.pixmap.scaledToWidth(100)
+            self.image = QLabel(self)
+            self.image.resize(self.pixmap.width(), self.pixmap.height())
+            self.image.move(15, 160)
+            self.image.setPixmap(self.pixmap)
+            self.setLayout(self.main_layout)
+
+
+        def my_ip(self):
+            self.conn = http.client.HTTPConnection("ifconfig.me")
+            self.conn.request("GET", "/ip")
+            self.name_input.setText(self.conn.getresponse().read().decode('UTF-8'))
+
+        def country(self):
+            try:
+                enter_ip = self.name_input.text()
+                if len(get_country_by_ip(ip2int(enter_ip))) > 0:
+                    country = get_country(ip2int(enter_ip))
+                    self.output.setPlainText(country[1])
+                    self.set_flag(get_flag(country[0]))
+                else:
+                    self.output.setPlainText('Неверный ввод.')
+            except:
+                if enter_ip == '':
+                    self.output.setPlainText('Введите IP.')
+                else:
+                    self.output.setPlainText('Неверный ввод.')
+                self.set_flag(get_flag('error'))
+
+    if __name__ == '__main__':
+        app = QApplication(sys.argv)
+
+        # window = MainWindow()
+        # window.show()
+
+        ex = IP()
+        ex.show()
+
+
+        sys.exit(app.exec())
+
 except Exception as e:
     print("КРИТИЧЕСКАЯ ОШИБКА: " + str(e))
     raise SystemExit
